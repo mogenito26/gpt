@@ -1,0 +1,420 @@
+{
+  "name": "Agente Seguros Candia - Mejorado",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "seguros",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-736, -160],
+      "id": "eb080007-7936-4fe4-aefc-1f0501347d0e",
+      "name": "Webhook1",
+      "webhookId": "5e23496a-ac42-47d7-9b54-ec801d7ad60d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nif (!body || !body.entry || !body.entry[0]) {\n  return [{ json: { skip: true, messageType: 'none' } }];\n}\n\nconst changes = body.entry[0].changes;\nif (!changes || !changes[0]) {\n  return [{ json: { skip: true, messageType: 'none' } }];\n}\n\nconst value = changes[0].value;\n\nif (!value.messages || value.messages.length === 0) {\n  return [{ json: { skip: true, messageType: 'status' } }];\n}\n\nconst message = value.messages[0];\nconst contact = value.contacts ? value.contacts[0] : null;\nconst metadata = value.metadata;\n\n// Detectar si el mensaje contiene un archivo adjunto\nlet fileData = null;\nlet messageText = '[Mensaje no textual]';\n\nif (message.type === 'text') {\n  messageText = message.text.body;\n} else if (message.type === 'document') {\n  fileData = {\n    type: 'document',\n    id: message.document.id,\n    filename: message.document.filename || 'documento',\n    mimeType: message.document.mime_type\n  };\n  messageText = `[Documento adjunto: ${message.document.filename || 'archivo'}]`;\n} else if (message.type === 'image') {\n  fileData = {\n    type: 'image',\n    id: message.image.id,\n    mimeType: 'image/jpeg'\n  };\n  messageText = '[Imagen adjunta]';\n}\n\nreturn [{\n  json: {\n    phone: message.from,\n    clientName: contact ? contact.profile.name : 'Cliente',\n    messageType: message.type,\n    messageText: messageText,\n    messageId: message.id,\n    phoneNumberId: metadata ? metadata.phone_number_id : '',\n    timestamp: message.timestamp,\n    fileData: fileData,\n    skip: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-480, -128],
+      "id": "10cb14b4-658f-4692-a901-4b2c63b04246",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "38450a38-a042-4855-b82b-e3a8a261e165",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-336, -176],
+      "id": "63e2b547-f32a-455b-9be9-c471fd9ea044",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [-320, 16],
+      "id": "66d0c7e9-39fe-45c4-afa1-8b0c1f6f4e9f",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Cliente: {{ $('Code in JavaScript').item.json.clientName }}\nTeléfono: {{ $('Code in JavaScript').item.json.phone }}\nMensaje: {{ $('Code in JavaScript').item.json.messageText }}\nArchivo adjunto: {{ $('Code in JavaScript').item.json.fileData ? JSON.stringify($('Code in JavaScript').item.json.fileData) : 'Ninguno' }}",
+        "options": {
+          "systemMessage": "Eres el Consultor Senior de Seguros Candia, una agencia élite vinculada a Sura Colombia.\n\nTu propósito es actuar como un puente de confianza, conocimiento técnico y calidez humana entre el cliente y el ecosistema de protección de Sura.\n\n## TU PERSONALIDAD\n- Cálido, profesional y empático\n- Usas lenguaje cercano pero técnicamente preciso\n- Siempre buscas la mejor solución para el cliente\n- Respondes en español colombiano natural\n\n## TUS CAPACIDADES\nPuedes ayudar con:\n1. **Cotizaciones** de seguros: vida, salud, autos, hogar, empresarial\n2. **Agendar citas** con asesores especializados\n3. **Enviar información** por correo electrónico\n4. **Recibir y organizar documentos** del cliente en Google Drive\n5. **Seguimiento** de pólizas existentes\n6. **Soporte** en reclamaciones y siniestros\n\n## FLUJO DE ATENCIÓN\n1. Saluda al cliente por su nombre\n2. Identifica su necesidad principal\n3. Ofrece la solución más adecuada\n4. Si requiere cotización: solicita datos básicos (edad, ciudad, tipo de seguro)\n5. Si requiere cita: usa la herramienta schedule_appointment\n6. Si quiere recibir info por correo: usa send_email\n7. Si envía documentos: usa upload_to_drive\n\n## HERRAMIENTAS DISPONIBLES\n- schedule_appointment: para agendar citas\n- send_email: para enviar cotizaciones o info por correo\n- upload_to_drive: para recibir y organizar documentos del cliente\n- search_policies: para consultar información de pólizas Sura\n\n## REGLAS IMPORTANTES\n- NUNCA inventes precios o coberturas específicas sin verificar\n- SIEMPRE confirma los datos antes de agendar o enviar correos\n- Si no sabes algo, ofrece conectar con un asesor humano\n- Mantén las respuestas concisas para WhatsApp (máximo 3 párrafos)\n- Usa emojis moderadamente para hacer el texto más amigable\n\n## SEGUROS SURA DISPONIBLES\n- Vida: protección familiar, ahorro con rentabilidad\n- Salud: planes complementarios al sistema de salud\n- Autos: todo riesgo, terceros, SOAT\n- Hogar: contenido, estructura, responsabilidad civil\n- Empresarial: pymes, grandes empresas, responsabilidad civil\n- Viaje: nacional e internacional"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-112, -192],
+      "id": "c4ff2add-777b-4a66-9061-8ad20619ec01",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code in JavaScript').item.json.phone }}",
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [-16, -32],
+      "id": "9263ca1e-f47c-480b-9fe7-e3cbf487a1f3",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-112, 0],
+      "id": "fca91784-bcc8-4fcb-80cd-c5d617f3b9a9",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "oE1UGiKpDmJJu0aa",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "46dce3b09731f3748ce7039574e5d984"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json;charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ \nJSON.stringify({\n  \"from\": \"+573223098985\",\n  \"to\": $('Code in JavaScript').item.json.phone,\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": $json.output\n  }\n}) \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [368, -128],
+      "id": "45ccf12a-97e7-4d9f-ae4a-1ec02b54a943",
+      "name": "Enviar WhatsApp",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "w8INrJXYx1KOsUwk",
+          "name": "ycloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://primary-production-be1d2.up.railway.app/mcp/53cb068c-7bd1-404f-ad4f-8c368aac6a4f",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [112, -16],
+      "id": "14b84c15-d7e7-45f0-846e-e3c060b13617",
+      "name": "MCP Client"
+    },
+    {
+      "parameters": {
+        "name": "send_email",
+        "description": "Envía un correo electrónico al cliente con información de seguros, cotizaciones o confirmaciones. Úsala cuando el cliente pida recibir información por correo o cuando se genere una cotización.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "EMAIL_WORKFLOW_ID"
+        },
+        "fields": {
+          "values": [
+            {
+              "name": "to",
+              "stringValue": "={{ /*Correo del cliente*/ }}"
+            },
+            {
+              "name": "subject",
+              "stringValue": "={{ /*Asunto del correo*/ }}"
+            },
+            {
+              "name": "body",
+              "stringValue": "={{ /*Cuerpo del correo en HTML*/ }}"
+            },
+            {
+              "name": "clientName",
+              "stringValue": "={{ $('Code in JavaScript').item.json.clientName }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [224, 80],
+      "id": "tool-send-email",
+      "name": "Tool: Enviar Correo"
+    },
+    {
+      "parameters": {
+        "name": "schedule_appointment",
+        "description": "Agenda una cita con un asesor de Seguros Candia. Úsala cuando el cliente quiera hablar con un asesor, necesite una cotización personalizada o quiera revisar su póliza en detalle. Solicita: nombre completo, correo, teléfono, tipo de seguro de interés y fecha/hora preferida.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "CALENDAR_WORKFLOW_ID"
+        },
+        "fields": {
+          "values": [
+            {
+              "name": "clientName",
+              "stringValue": "={{ /*Nombre completo del cliente*/ }}"
+            },
+            {
+              "name": "clientEmail",
+              "stringValue": "={{ /*Correo del cliente*/ }}"
+            },
+            {
+              "name": "clientPhone",
+              "stringValue": "={{ $('Code in JavaScript').item.json.phone }}"
+            },
+            {
+              "name": "insuranceType",
+              "stringValue": "={{ /*Tipo de seguro: vida/salud/autos/hogar/empresarial*/ }}"
+            },
+            {
+              "name": "preferredDate",
+              "stringValue": "={{ /*Fecha preferida YYYY-MM-DD*/ }}"
+            },
+            {
+              "name": "preferredTime",
+              "stringValue": "={{ /*Hora preferida HH:MM*/ }}"
+            },
+            {
+              "name": "notes",
+              "stringValue": "={{ /*Notas adicionales*/ }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [336, 80],
+      "id": "tool-schedule",
+      "name": "Tool: Agendar Cita"
+    },
+    {
+      "parameters": {
+        "name": "upload_to_drive",
+        "description": "Sube y organiza documentos del cliente en Google Drive. Úsala cuando el cliente envíe documentos como cédula, licencia, tarjeta de propiedad, o cualquier archivo necesario para procesar su seguro.",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "DRIVE_WORKFLOW_ID"
+        },
+        "fields": {
+          "values": [
+            {
+              "name": "clientName",
+              "stringValue": "={{ $('Code in JavaScript').item.json.clientName }}"
+            },
+            {
+              "name": "clientPhone",
+              "stringValue": "={{ $('Code in JavaScript').item.json.phone }}"
+            },
+            {
+              "name": "fileData",
+              "stringValue": "={{ JSON.stringify($('Code in JavaScript').item.json.fileData) }}"
+            },
+            {
+              "name": "documentType",
+              "stringValue": "={{ /*Tipo de documento: cedula/licencia/tarjeta_propiedad/poliza/otro*/ }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2,
+      "position": [448, 80],
+      "id": "tool-drive",
+      "name": "Tool: Subir a Drive"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_language_model",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Enviar Correo": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Agendar Cita": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tool: Subir a Drive": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5846d3b73081b9cbc2915a02db15e976e4af125ba07d2f5546971ece347280c4"
+  },
+  "tags": []
+}

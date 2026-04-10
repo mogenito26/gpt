@@ -1,0 +1,415 @@
+{
+  "name": "Seguros Candia - Servicio al Cliente WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "whatsapp-candia",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "WhatsApp Verificacion GET",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 160],
+      "webhookId": "whatsapp-candia-get"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-candia",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000002",
+      "name": "WhatsApp Mensajes POST",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 340],
+      "webhookId": "whatsapp-candia-post"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verificacion Meta WhatsApp Webhook\nconst query = $input.first().json.query;\nconst VERIFY_TOKEN = 'seguros_candia_token_2024'; // Cambia esto en Meta Developer\n\nconst mode = query['hub.mode'];\nconst token = query['hub.verify_token'];\nconst challenge = query['hub.challenge'];\n\nif (mode === 'subscribe' && token === VERIFY_TOKEN) {\n  return [{ json: { challenge: challenge } }];\n}\n\nthrow new Error('Token de verificacion incorrecto');"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000003",
+      "name": "Verificar Token Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000004",
+      "name": "Responder Verificacion",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [720, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer datos del mensaje entrante de WhatsApp\nconst body = $input.first().json.body;\n\nif (!body || !body.entry || !body.entry[0]) {\n  return [{ json: { skip: true, messageType: 'none' } }];\n}\n\nconst changes = body.entry[0].changes;\nif (!changes || !changes[0]) {\n  return [{ json: { skip: true, messageType: 'none' } }];\n}\n\nconst value = changes[0].value;\n\nif (!value.messages || value.messages.length === 0) {\n  // Puede ser un status update, no un mensaje\n  return [{ json: { skip: true, messageType: 'status' } }];\n}\n\nconst message = value.messages[0];\nconst contact = value.contacts ? value.contacts[0] : null;\nconst metadata = value.metadata;\n\nreturn [{\n  json: {\n    phone: message.from,\n    clientName: contact ? contact.profile.name : 'Cliente',\n    messageType: message.type,\n    messageText: message.type === 'text' ? message.text.body : '[Mensaje no textual]',\n    messageId: message.id,\n    phoneNumberId: metadata ? metadata.phone_number_id : '',\n    timestamp: message.timestamp,\n    skip: false\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000005",
+      "name": "Extraer Datos del Mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-001",
+              "leftValue": "={{ $json.messageType }}",
+              "rightValue": "text",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000006",
+      "name": "Es mensaje de texto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 340]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000007",
+      "name": "Ignorar No Texto",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [960, 480]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "REEMPLAZA_CON_TU_FILE_ID_DE_GOOGLE_DRIVE",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000008",
+      "name": "Base de Conocimiento Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [960, 340],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CONFIGURA_TUS_CREDENCIALES_GOOGLE",
+          "name": "Google Drive - Seguros Candia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar contexto para el agente IA\nconst driveData = $input.first();\nconst msgData = $('Extraer Datos del Mensaje').first().json;\n\n// Extraer texto del documento de Google Drive\nlet knowledgeBase = '';\nif (driveData.binary && driveData.binary.data) {\n  try {\n    knowledgeBase = Buffer.from(driveData.binary.data, 'base64').toString('utf-8');\n  } catch(e) {\n    knowledgeBase = 'Base de conocimiento no disponible temporalmente.';\n  }\n} else if (driveData.json && driveData.json.data) {\n  knowledgeBase = driveData.json.data;\n} else {\n  knowledgeBase = 'Base de conocimiento no disponible. Usa tu conocimiento general sobre seguros.';\n}\n\nreturn [{\n  json: {\n    messageText: msgData.messageText,\n    phone: msgData.phone,\n    clientName: msgData.clientName,\n    phoneNumberId: msgData.phoneNumberId,\n    knowledgeBase: knowledgeBase.substring(0, 8000) // Limitar tokens\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000009",
+      "name": "Preparar Contexto IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 340]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.messageText }}",
+        "options": {
+          "systemMessage": "=Eres Candia, la asistente virtual de Seguros Candia. Tu misión es brindar atención al cliente de manera empática, cálida y genuinamente humana. Siempre respondes ÚNICAMENTE en español.\n\n---\n🌟 TU PERSONALIDAD:\n- Eres cálida, empática y cercana — como una persona real que realmente se preocupa\n- Si el cliente está molesto o preocupado, PRIMERO valida sus sentimientos antes de dar información\n- Usas un lenguaje natural y accesible, nunca robótico ni frío\n- Eres paciente y nunca haces sentir al cliente que está molestando\n- Puedes usar emojis ocasionalmente para dar calidez, pero sin exagerar\n\n---\n📋 REGLAS IMPORTANTES:\n1. Responde SIEMPRE en español\n2. Sé concisa: máximo 3-4 oraciones por respuesta (WhatsApp es conversacional)\n3. Si no sabes algo específico de la póliza del cliente, dilo honestamente\n4. Nunca inventes información sobre coberturas o precios específicos\n5. Para hablar con un agente humano, indica al cliente que escriba 'AGENTE'\n6. En emergencias o siniestros graves, prioriza calmar al cliente\n7. Si el cliente escribe 'AGENTE', responde: 'Entendido, voy a conectarte con uno de nuestros asesores. Por favor espera un momento. 🤝'\n\n---\n🏢 INFORMACIÓN DE SEGUROS CANDIA:\n{{ $json.knowledgeBase }}\n\n---\n👤 DATOS DEL CLIENTE:\nNombre: {{ $json.clientName }}\n\n---\nRecuerda: Tu objetivo no es solo responder preguntas, sino hacer que el cliente se sienta escuchado, valorado y en buenas manos. ¡Eres el corazón de Seguros Candia!"
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000010",
+      "name": "Agente IA Candia",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1440, 340]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.75,
+          "maxTokens": 400
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000011",
+      "name": "GPT-4o OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1300, 520],
+      "credentials": {
+        "openAiApi": {
+          "id": "CONFIGURA_TUS_CREDENCIALES_OPENAI",
+          "name": "OpenAI - Seguros Candia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Extraer Datos del Mensaje').first().json.phone }}",
+        "contextWindowLength": 15
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000012",
+      "name": "Memoria Conversacion",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [1440, 520]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-001",
+              "name": "responseText",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-002",
+              "name": "phone",
+              "value": "={{ $('Preparar Contexto IA').first().json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-003",
+              "name": "phoneNumberId",
+              "value": "={{ $('Preparar Contexto IA').first().json.phoneNumberId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000013",
+      "name": "Preparar Respuesta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1680, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.phoneNumberId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $json.phone, type: 'text', text: { body: $json.responseText } }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000014",
+      "name": "Enviar Mensaje WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 340],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURA_TU_TOKEN_WHATSAPP",
+          "name": "WhatsApp Bearer Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000015",
+      "name": "Responder 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2160, 340]
+    }
+  ],
+  "connections": {
+    "WhatsApp Verificacion GET": {
+      "main": [
+        [
+          {
+            "node": "Verificar Token Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Token Meta": {
+      "main": [
+        [
+          {
+            "node": "Responder Verificacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Mensajes POST": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos del Mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos del Mensaje": {
+      "main": [
+        [
+          {
+            "node": "Es mensaje de texto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es mensaje de texto?": {
+      "main": [
+        [
+          {
+            "node": "Base de Conocimiento Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar No Texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Base de Conocimiento Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Preparar Contexto IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Contexto IA": {
+      "main": [
+        [
+          {
+            "node": "Agente IA Candia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o OpenAI": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente IA Candia",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria Conversacion": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente IA Candia",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente IA Candia": {
+      "main": [
+        [
+          {
+            "node": "Preparar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Mensaje WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Mensaje WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Responder 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "seguros-candia-whatsapp"
+  }
+}
