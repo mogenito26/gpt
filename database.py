@@ -2,22 +2,52 @@ import aiosqlite
 
 DB_PATH = "seguros_candia.db"
 
-async def get_db() -> aiosqlite.Connection:
-    """Abre una conexión independiente por request"""
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    return db
-
 async def init_db() -> None:
     """Crea las tablas si no existen (con limpieza de estructura antigua)"""
     async with aiosqlite.connect(DB_PATH) as db:
-        # 🔥 FORZAR recreación de la tabla leads con la estructura correcta
-        await db.execute("DROP TABLE IF EXISTS leads")
-        print("🗑️ Tabla 'leads' eliminada y será recreada")
+        # Verificar columnas existentes y recrear tabla si es necesario
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leads'")
+        table_exists = await cursor.fetchone()
         
-        # Crear tabla leads con la estructura correcta
+        if table_exists:
+            # Verificar qué columnas tiene la tabla actual
+            cursor = await db.execute("PRAGMA table_info(leads)")
+            columns = await cursor.fetchall()
+            column_names = [col[1] for col in columns]
+            
+            if 'user' not in column_names:
+                print("⚠️ Tabla 'leads' antigua detectada. Recreando...")
+                # Guardar datos existentes si los hay
+                await db.execute("ALTER TABLE leads RENAME TO leads_old")
+                
+                # Crear tabla nueva con estructura correcta
+                await db.execute("""
+                    CREATE TABLE leads (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user       TEXT    NOT NULL,
+                        message    TEXT    NOT NULL,
+                        asesor     TEXT    NOT NULL,
+                        score      TEXT    NOT NULL DEFAULT 'frio',
+                        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+                    )
+                """)
+                
+                # Migrar datos antiguos (si los hay)
+                try:
+                    await db.execute("""
+                        INSERT INTO leads (id, message, asesor, score, created_at)
+                        SELECT id, message, asesor, score, created_at FROM leads_old
+                    """)
+                    print("✅ Datos migrados correctamente")
+                except Exception as e:
+                    print(f"⚠️ No se pudieron migrar datos antiguos: {e}")
+                
+                await db.execute("DROP TABLE leads_old")
+                print("✅ Tabla 'leads' recreada correctamente")
+        
+        # Crear tabla leads si no existe
         await db.execute("""
-            CREATE TABLE leads (
+            CREATE TABLE IF NOT EXISTS leads (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 user       TEXT    NOT NULL,
                 message    TEXT    NOT NULL,
