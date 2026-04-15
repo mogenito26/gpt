@@ -10,7 +10,9 @@ from slowapi.util import get_remote_address
 import aiosqlite
 import asyncio
 import os
-
+from ai_engine import generate_response, score_lead, notify_n8n
+from database import init_db, save_message  # <-- Revisa que diga 'init_db'
+from crm import save_lead
 # ── Rate limiter ──────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
 
