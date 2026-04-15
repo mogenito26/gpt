@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -156,19 +157,90 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+=======
+import asyncioimport logging
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+
+# ... (tu código existente)
+
+# Servir archivos estáticos
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        return f.read()
+        
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+
+# ✅ IMPORTACIÓN CORRECTA (Sin el prefijo app.)
+from ai_engine import generate_response, score_lead, notify_n8n
+from database import init_db, save_message
+from crm import save_lead
+
+# Configuración de logs para monitorear a Laura y Liliana en Render
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Seguros Candia API")
+>>>>>>> 7e7d061 (Guardar cambios antes de hacer pull)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+<<<<<<< HEAD
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=1000)
-    user: str = Field(..., min_length=1, max_length=100)
+=======
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# Seguridad: Toma la API_KEY de las variables de entorno de Render
+API_KEY = os.getenv("API_KEY", "dev-key-123")
+
+async def verify_api_key(x_api_key: str = Header(None, alias="x-api-key")):
+    if x_api_key != API_KEY:
+        logger.warning(f"Intento de acceso fallido con llave: {x_api_key}")
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return x_api_key
+
+>>>>>>> 7e7d061 (Guardar cambios antes de hacer pull)
+class ChatRequest(BaseModel):
+    message: str
+    user: str
+@app.get("/")
+async def root():
+    return {
+        "mensaje": "API de Asesor IA SURA funcionando",
+        "endpoints": {
+            "health": "/health",
+            "chat": "/chat (POST)",
+            "leads": "/leads"
+        }
+    }
+@app.post("/chat")
+async def chat(req: ChatRequest, api_key: str = Depends(verify_api_key)):
+    try:
+        # 1. Ejecutar IA y Calificación en paralelo
+        ai_res, lead_score = await asyncio.wait_for(
+            asyncio.gather(
+                generate_response(req.user, req.message),
+                score_lead(req.message)
+            ),
+            timeout=40.0
+        )
+
+<<<<<<< HEAD
 class ChatResponse(BaseModel):
     response: str
     score: str
@@ -224,3 +296,34 @@ async def root():
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
+=======
+        # 2. Guardar historial local
+        await save_message(req.user, "user", req.message)
+        await save_message(req.user, "assistant", ai_res)
+
+        # 3. Gestión de Leads Calientes
+        lead_guardado = False
+        if lead_score == "caliente":
+            await save_lead(req.user, req.message, lead_score)
+            lead_guardado = True
+            # Enviar a n8n sin bloquear la respuesta del chat
+            asyncio.create_task(notify_n8n(req.user, req.message, lead_score, ai_res))
+            logger.info(f"🔥 Lead detectado para SURA: {req.user}")
+
+        return {
+            "response": ai_res,
+            "score": lead_score,
+            "lead_guardado": lead_guardado
+        }
+
+    except asyncio.TimeoutError:
+        return JSONResponse(status_code=504, content={"detail": "La IA tardó demasiado"})
+    except Exception as e:
+        logger.error(f"Error crítico: {e}")
+        return JSONResponse(status_code=500, content={"detail": "Error interno"})
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
+    logger.info("🚀 Seguros Candia Online en Render")
+>>>>>>> 7e7d061 (Guardar cambios antes de hacer pull)

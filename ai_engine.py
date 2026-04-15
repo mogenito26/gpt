@@ -1,61 +1,130 @@
+import httpx
+import os
+import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
-from app.config import OPENAI_API_KEY
-from app.crm import get_conversation_history
+from database import get_conversation_history
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+# Configuración de logs
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Eres un asesor experto en seguros SURA Colombia.
-Tu objetivo es ayudar al cliente a encontrar el seguro ideal para sus necesidades,
-explicar coberturas, precios aproximados y guiarlo hacia una cotización formal.
+# Carga de variables de entorno
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
-Pautas:
-- Sé amigable, claro y profesional.
-- Si el cliente pregunta por precios, da rangos aproximados y menciona que un asesor
-  humano contactará para una cotización exacta.
-- Nunca inventes coberturas o precios exactos que no conozcas.
-- Si el cliente no habla de seguros, redirige la conversación con amabilidad.
-- Responde siempre en español."""
+api_key = os.getenv("OPENAI_API_KEY")
+N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")  # 🔴 FIX: movida al .env
 
-SCORE_PROMPT = """Analiza el siguiente mensaje de un cliente en una aseguradora.
-Clasifícalo como "caliente" si expresa intención de compra, pide precio, cotización,
-quiere contratar o muestra urgencia. Clasifícalo como "frio" en cualquier otro caso.
+# Validación de variables de entorno críticas
+if not api_key or len(api_key) < 20:  # 🔴 FIX: validación compatible con todos los formatos de key
+    raise ValueError("❌ OPENAI_API_KEY no configurada correctamente en el .env")
 
-Responde ÚNICAMENTE con una de estas dos palabras: caliente  o  frio
+if not N8N_WEBHOOK_URL:
+    raise ValueError("❌ N8N_WEBHOOK_URL no configurada en el .env")
 
-Mensaje del cliente: {message}"""
+client = AsyncOpenAI(api_key=api_key)
+
+# 🟡 FIX: System Prompt cargado desde archivo externo si existe,
+# con fallback al prompt embebido para no romper arranques sin el archivo.
+_PROMPT_PATH = Path(__file__).parent / "system_prompt.txt"
+
+if _PROMPT_PATH.exists():
+    SYSTEM_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8").strip()
+    logger.info("✅ System Prompt cargado desde system_prompt.txt")
+else:
+    logger.warning("⚠️  system_prompt.txt no encontrado, usando prompt embebido.")
+    SYSTEM_PROMPT = """Eres el asesor experto de Seguros Candia, aliado de SURA Colombia (Código de Asesor: 9736). 
+Tu misión es asesorar y facilitar la cotización inmediata.
+
+REGLAS PARA COTIZACIÓN EN LÍNEA:
+1. SI EL CLIENTE BUSCA SEGURO DE CARRO/MOVILIDAD: Invítalo a cotizar en segundos usando este link:
+   https://www.suraenlinea.com/movilidad/sura/seguro-de-carro?asesor=9736
+
+2. SI EL CLIENTE BUSCA SEGURO DE VIAJES: Dile que SURA ofrece la mejor cobertura internacional y entrégale este link:
+   https://www.suraenlinea.com/viajes/sura?codigoAsesor=9736
+
+3. SI EL CLIENTE BUSCA ARRENDAMIENTO DIGITAL: Explícale que puede calcular su póliza aquí:
+   https://www.suraenlinea.com/arrendamiento-digital/sura/cotizacion/calculadora?asesor=9736
+
+PARA OTROS PRODUCTOS (Vida, Salud, Hogar, Moto, Empresas):
+- Solicita los datos básicos (Nombre, Ciudad, Teléfono).
+- Dile que Hermógenes o su equipo (Liliana/Helda) le enviarán una propuesta personalizada.
+
+ESTILO DE RESPUESTA:
+- Sé amable, profesional y eficiente.
+- Usa el nombre de la agencia "Seguros Candia" para generar confianza.
+- Cuando entregues un link, di algo como: "Para tu comodidad, puedes obtener un precio exacto ahora mismo en este enlace oficial de SURA:"."""
+
+# Límite de caracteres por mensaje de usuario
+MAX_MESSAGE_LENGTH = 2000
 
 
 async def generate_response(user: str, message: str) -> str:
-    """
-    Genera respuesta del LLM incluyendo el historial de conversación del usuario.
-    """
-    history = await get_conversation_history(user, limit=10)
+    # 🟢 FIX: validación de longitud del mensaje
+    if len(message) > MAX_MESSAGE_LENGTH:
+        logger.warning(f"Mensaje de {user} excede el límite ({len(message)} chars)")
+        return "Tu mensaje es demasiado largo. Por favor resúmelo en menos palabras."
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(history)
-    messages.append({"role": "user", "content": message})
+    try:  # 🟡 FIX: manejo de errores para no tumbar la request
+        history = await get_conversation_history(user, limit=6)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": message})
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        temperature=0.7,
-        max_tokens=500,
-    )
-    return response.choices[0].message.content.strip()
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.4  # 🟢 FIX: bajado de 0.7 para respuestas más consistentes
+        )
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"❌ Error generando respuesta para {user}: {e}")
+        return "En este momento no puedo responder. Por favor intenta de nuevo en unos segundos."
 
 
 async def score_lead(message: str) -> str:
-    """
-    Usa el propio LLM para clasificar la intención del lead.
-    Más robusto que keywords: detecta variaciones semánticas.
-    """
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "user", "content": SCORE_PROMPT.format(message=message)}
-        ],
-        temperature=0,
-        max_tokens=5,
+    # 🟡 FIX: prompt más estricto para evitar clasificaciones ambiguas
+    prompt_instrucciones = (
+        "Responde ÚNICAMENTE con una sola palabra en español, sin puntuación ni explicación: "
+        "'caliente' si el usuario muestra interés real en comprar o cotizar un seguro, "
+        "o 'frio' si solo está explorando, saludando o preguntando algo genérico. "
+        f"Mensaje del usuario: {message}"
     )
-    result = response.choices[0].message.content.strip().lower()
-    return "caliente" if "caliente" in result else "frio"
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt_instrucciones}],
+            temperature=0
+        )
+        result = response.choices[0].message.content.strip().lower()
+        score = "caliente" if "caliente" in result else "frio"
+        logger.info(f"Lead clasificado como: {score}")
+        return score
+
+    except Exception as e:
+        logger.error(f"❌ Error clasificando lead: {e}")
+        return "frio"  # En caso de error, no notificar n8n
+
+
+async def notify_n8n(user: str, message: str, score: str, ai_res: str):
+    """Envía el lead a n8n solo si es caliente."""
+    if score != "caliente":
+        return
+
+    payload = {
+        "agencia": "Seguros Candia",
+        "cliente": user,
+        "consulta": message,
+        "respuesta_ia": ai_res
+    }
+
+    async with httpx.AsyncClient() as httpx_client:
+        try:
+            await httpx_client.post(N8N_WEBHOOK_URL, json=payload, timeout=10.0)
+            logger.info(f"✅ Notificación enviada a n8n para {user}")
+        except Exception as e:
+            # 🟢 FIX: se loggea el payload para poder recuperar el lead manualmente
+            logger.error(f"❌ Error avisando a n8n para {user}: {e}. Payload perdido: {payload}")

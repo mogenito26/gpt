@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguros Candia - Chat</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #chat {
+            width: 420px;
+            height: 580px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        }
+
+        header {
+            background: #0033a0;
+            color: white;
+            padding: 16px;
+            font-weight: bold;
+            font-size: 15px;
+            border-radius: 12px 12px 0 0;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        header::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background: #4caf50;
+    border-radius: 50%;
+    display: inline-block;
+    /* Añade esto para el efecto de pulso */
+    box-shadow: 0 0 5px #4caf50;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    70% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+        #messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .msg {
+            padding: 10px 14px;
+            border-radius: 14px;
+            font-size: 14px;
+            max-width: 80%;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .bot {
+            background: #eef2ff;
+            align-self: flex-start;
+            color: #333;
+            border-radius: 4px 14px 14px 14px;
+        }
+
+        .user {
+            background: #0033a0;
+            color: white;
+            align-self: flex-end;
+            border-radius: 14px 4px 14px 14px;
+        }
+
+        /* Indicador de "escribiendo..." */
+        .typing {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 12px 14px;
+        }
+
+        .typing span {
+            width: 7px;
+            height: 7px;
+            background: #999;
+            border-radius: 50%;
+            animation: bounce 1.2s infinite;
+        }
+
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-6px); }
+        }
+
+        footer {
+            padding: 12px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 8px;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus { border-color: #0033a0; }
+
+        button {
+            background: #0033a0;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s, opacity 0.2s;
+        }
+
+        button:hover:not(:disabled) { background: #0044cc; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .msg a {
+            color: #0033a0;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat">
+        <header>Asesor Seguros Candia</header>
+        <div id="messages">
+            <div class="msg bot">¡Hola! ¿En qué puedo ayudarte hoy?</div>
+        </div>
+        <footer>
+            <input
+                type="text"
+                id="txt"
+                placeholder="Escribe aquí..."
+                maxlength="2000"
+                autocomplete="off"
+            >
+            <button id="sendBtn" onclick="send()">Enviar</button>
+        </footer>
+    </div>
+
+    <script>
+    // ID de sesión único por visitante
+    const sessionId = "web_" + Math.random().toString(36).slice(2, 11);
+
+    const input = document.getElementById("txt");
+    const sendBtn = document.getElementById("sendBtn");
+
+    input.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" && !e.shiftKey) send();
+    });
+
+    async function send() {
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        addMsg(msg, "user");
+        input.value = "";
+
+        setLoading(true);
+        const typingEl = addTyping();
+
+        try {
+            const res = await fetch("/chat", {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ 
+                    message: msg, 
+                    user: sessionId  // 👈 Ahora usa el ID único
+                })
+            });
+            
+            typingEl.remove();
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                addMsg("Ocurrió un error. Por favor intenta de nuevo.", "bot");
+                console.error("Error del servidor:", err);
+                return;
+            }
+
+            const data = await res.json();
+            let reply = data.response || "No pude procesar tu mensaje.";
+            
+            // Si se guardó el lead, mostrar qué asesor fue asignado
+            if (data.lead_guardado && data.asesor) {
+                reply += `\n\n✅ ¡Genial! Un asesor (${data.asesor}) se contactará contigo pronto.`;
+            }
+            
+            addMsg(reply, "bot");
+
+        } catch (e) {
+            typingEl.remove();
+            addMsg("No hay conexión con el servidor. Por favor intenta más tarde.", "bot");
+            console.error("Error de red:", e);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function setLoading(state) {
+        sendBtn.disabled = state;
+        input.disabled = state;
+    }
+
+    function addTyping() {
+        const msgs = document.getElementById("messages");
+        const d = document.createElement("div");
+        d.className = "msg bot typing";
+        d.innerHTML = "<span></span><span></span><span></span>";
+        msgs.appendChild(d);
+        msgs.scrollTop = msgs.scrollHeight;
+        return d;
+    }
+
+    function addMsg(text, type) {
+        const msgs = document.getElementById("messages");
+        const d = document.createElement("div");
+        d.className = `msg ${type}`;
+
+        if (type === "bot") {
+            const safe = escapeHtml(text);
+            const urlRegex = /(https?:\/\/[^\s<>"]+)/g;
+            d.innerHTML = safe.replace(urlRegex, function(url) {
+                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`;
+            });
+        } else {
+            d.textContent = text;
+        }
+
+        msgs.appendChild(d);
+        msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+        return str.replace(/[&<>"']/g, c => map[c]);
+    }
+</script>
