@@ -1,5 +1,5 @@
 import aiosqlite
-from app.config import DB_PATH
+
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -11,8 +11,9 @@ async def get_db() -> aiosqlite.Connection:
 
 async def init_db() -> None:
     """Crea las tablas si no existen. Se llama una sola vez al iniciar la app."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
+    conn = await aiosqlite.connect("seguros_candia.db")  # o leads.db
+    # ... crear tablas, etc.
+    await conn.close()
             CREATE TABLE IF NOT EXISTS leads (
                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
                 user     TEXT    NOT NULL,
