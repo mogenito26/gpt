@@ -210,6 +210,16 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
 async def list_leads(request: Request, limit: int = 50) -> list[dict]:
     """Panel admin: lista los últimos leads capturados"""
     return await get_leads(limit=limit)
+@app.get("/")
+async def root():
+    return {
+        "mensaje": "API de Asesor IA SURA funcionando",
+        "endpoints": {
+            "health": "/health",
+            "chat": "/chat (POST)",
+            "leads": "/leads"
+        }
+    }
 
 @app.get("/health")
 async def health() -> JSONResponse:
