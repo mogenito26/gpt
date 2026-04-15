@@ -1,8 +1,4 @@
 import aiosqlite
-from app.config import ASESORES
-from app.database import get_db
-
-
 async def get_conversation_history(user: str, limit: int = 10) -> list[dict]:
     """Recupera los últimos N turnos de conversación de un usuario."""
     db: aiosqlite.Connection = await get_db()
