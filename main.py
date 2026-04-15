@@ -206,7 +206,15 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
         asesor=lead_data["asesor"] if lead_data else None,
         lead_guardado=lead_data is not None,
     )
-
+@app.get("/reset-db")
+async def reset_database():
+    """Endpoint temporal para resetear la base de datos"""
+    import os
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        await init_db()
+        return {"message": "Base de datos eliminada y recreada correctamente"}
+    return {"message": "Base de datos no encontrada"}
 @app.get("/leads")
 @limiter.limit("10/minute")
 async def list_leads(request: Request, limit: int = 50) -> list[dict]:
