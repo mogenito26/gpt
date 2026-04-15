@@ -7,12 +7,6 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-
-from app.ai_engine import generate_response, score_lead
-from app.crm import get_leads, save_lead, save_message
-from app.database import init_db
-
-
 # ── Rate limiter ──────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
 
