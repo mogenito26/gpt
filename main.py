@@ -214,3 +214,4 @@ async def list_leads(request: Request, limit: int = 50) -> list[dict]:
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({"status": "ok"})
+    
