@@ -5,22 +5,18 @@ DB_PATH = "seguros_candia.db"
 async def init_db() -> None:
     """Crea las tablas si no existen (con limpieza de estructura antigua)"""
     async with aiosqlite.connect(DB_PATH) as db:
-        # Verificar columnas existentes y recrear tabla si es necesario
         cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leads'")
         table_exists = await cursor.fetchone()
         
         if table_exists:
-            # Verificar qué columnas tiene la tabla actual
             cursor = await db.execute("PRAGMA table_info(leads)")
             columns = await cursor.fetchall()
             column_names = [col[1] for col in columns]
             
             if 'user' not in column_names:
                 print("⚠️ Tabla 'leads' antigua detectada. Recreando...")
-                # Guardar datos existentes si los hay
                 await db.execute("ALTER TABLE leads RENAME TO leads_old")
                 
-                # Crear tabla nueva con estructura correcta
                 await db.execute("""
                     CREATE TABLE leads (
                         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +28,6 @@ async def init_db() -> None:
                     )
                 """)
                 
-                # Migrar datos antiguos (si los hay)
                 try:
                     await db.execute("""
                         INSERT INTO leads (id, message, asesor, score, created_at)
@@ -45,7 +40,6 @@ async def init_db() -> None:
                 await db.execute("DROP TABLE leads_old")
                 print("✅ Tabla 'leads' recreada correctamente")
         
-        # Crear tabla leads si no existe
         await db.execute("""
             CREATE TABLE IF NOT EXISTS leads (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +51,6 @@ async def init_db() -> None:
             )
         """)
         
-        # Crear tabla conversations
         await db.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +61,6 @@ async def init_db() -> None:
             )
         """)
         
-        # Crear tabla asesor_counter
         await db.execute("""
             CREATE TABLE IF NOT EXISTS asesor_counter (
                 id      INTEGER PRIMARY KEY CHECK(id = 1),
@@ -76,7 +68,6 @@ async def init_db() -> None:
             )
         """)
         
-        # Insertar contador inicial
         await db.execute("""
             INSERT OR IGNORE INTO asesor_counter (id, counter) VALUES (1, 0)
         """)
@@ -93,6 +84,20 @@ async def save_message(user: str, role: str, content: str):
             (user, role, content)
         )
         await db.commit()
+
+async def get_conversation_history(user: str, limit: int = 10) -> list[dict]:
+    """Obtiene el historial de conversación de un usuario"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT role, content FROM conversations 
+               WHERE user = ? 
+               ORDER BY created_at ASC 
+               LIMIT ?""",
+            (user, limit)
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
 
 async def get_next_asesor() -> str:
     """Asigna el siguiente asesor en orden circular"""
@@ -120,19 +125,6 @@ async def save_lead(user: str, message: str, score: str) -> dict:
 async def get_leads(limit: int = 50) -> list[dict]:
     """Obtiene la lista de leads capturados"""
     async with aiosqlite.connect(DB_PATH) as db:
-        async def get_conversation_history(user: str, limit: int = 10) -> list[dict]:
-    """Obtiene el historial de conversación de un usuario"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT role, content FROM conversations 
-               WHERE user = ? 
-               ORDER BY created_at ASC 
-               LIMIT ?""",
-            (user, limit)
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT id, user, message, asesor, score, created_at FROM leads ORDER BY id DESC LIMIT ?",
