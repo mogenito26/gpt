@@ -120,6 +120,19 @@ async def save_lead(user: str, message: str, score: str) -> dict:
 async def get_leads(limit: int = 50) -> list[dict]:
     """Obtiene la lista de leads capturados"""
     async with aiosqlite.connect(DB_PATH) as db:
+        async def get_conversation_history(user: str, limit: int = 10) -> list[dict]:
+    """Obtiene el historial de conversación de un usuario"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT role, content FROM conversations 
+               WHERE user = ? 
+               ORDER BY created_at ASC 
+               LIMIT ?""",
+            (user, limit)
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT id, user, message, asesor, score, created_at FROM leads ORDER BY id DESC LIMIT ?",
