@@ -105,7 +105,7 @@ async def get_next_asesor() -> str:
         cursor = await db.execute("SELECT counter FROM asesor_counter WHERE id = 1")
         row = await cursor.fetchone()
         counter = row[0] if row else 0
-        asesores = ["Carlos", "Maria", "Jorge", "Laura"]
+        asesores = ["Liliana", "Laura", "Laura"]
         asesor = asesores[counter % len(asesores)]
         await db.execute("UPDATE asesor_counter SET counter = counter + 1 WHERE id = 1")
         await db.commit()
